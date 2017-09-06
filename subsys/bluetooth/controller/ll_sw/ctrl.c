@@ -449,6 +449,11 @@ u32_t radio_init(void *hf_clock, u8_t sca, u8_t connection_count_max,
 	return retcode;
 }
 
+struct device *radio_hf_clock_get(void)
+{
+	return _radio.hf_clock;
+}
+
 void ll_reset(void)
 {
 	u16_t conn_handle;
@@ -1270,7 +1275,7 @@ static inline u32_t isr_rx_scan(u8_t devmatch_ok, u8_t devmatch_id,
 	if ((_radio.scanner.conn) && ((_radio.fc_ena == 0) ||
 				      (_radio.fc_req == _radio.fc_ack)) &&
 	    isr_scan_init_check(pdu_adv_rx, rl_idx) &&
-	    ((radio_tmr_end_get() + 502) <
+	    ((radio_tmr_end_get() + 502 + (RADIO_TICKER_JITTER_US << 1)) <
 	     (TICKER_TICKS_TO_US(_radio.scanner.hdr.ticks_slot) -
 	      RADIO_TICKER_START_PART_US))) {
 		struct radio_le_conn_cmplt *radio_le_conn_cmplt;
@@ -1797,15 +1802,12 @@ isr_rx_conn_pkt_release(struct radio_pdu_node_tx *node_tx)
 	/* release */
 	if (conn->pkt_tx_head == conn->pkt_tx_ctrl) {
 		if (node_tx) {
+			conn->pkt_tx_head = conn->pkt_tx_head->next;
 			if (conn->pkt_tx_ctrl == conn->pkt_tx_ctrl_last) {
-				conn->pkt_tx_ctrl_last =
-					conn->pkt_tx_ctrl_last->next;
-			}
-			conn->pkt_tx_ctrl = conn->pkt_tx_ctrl->next;
-			conn->pkt_tx_head = conn->pkt_tx_ctrl;
-			if (conn->pkt_tx_ctrl == conn->pkt_tx_data) {
 				conn->pkt_tx_ctrl = NULL;
 				conn->pkt_tx_ctrl_last = NULL;
+			} else {
+				conn->pkt_tx_ctrl = conn->pkt_tx_head;
 			}
 
 			mem_release(node_tx, &_radio. pkt_tx_ctrl_free);
